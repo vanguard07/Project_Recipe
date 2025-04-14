@@ -11,3 +11,6 @@ class RecipeCreate(BaseModel):
     cook_time: Optional[str] = None
     tags: Optional[List[str]] = []
     source_url: Optional[str] = None
+
+class Prompt(BaseModel):
+    prompt: str
