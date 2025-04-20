@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 from app.api.recipe import router as RecipeRouter
+from app.api.chat import router as ChatRouter
 from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI(
@@ -8,7 +9,8 @@ app = FastAPI(
     version="0.1.0"
 )
 
-app.include_router(RecipeRouter, prefix="/recipes", tags=["recipes"])
+app.include_router(RecipeRouter, prefix="/recipe", tags=["recipes"])
+app.include_router(ChatRouter, prefix="/chat", tags=["chat"])
 
 app.add_middleware(
     CORSMiddleware,

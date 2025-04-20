@@ -92,7 +92,6 @@ async def search_recipes(request: Request):
         print(f"Error generating query: {e}")
         raise HTTPException(status_code=500, detail="Error generating query from prompt.")
 
-
 @router.post("/store", response_model=Recipe)
 async def store_recipe_from_url(prompt: Prompt):
     try:
