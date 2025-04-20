@@ -14,3 +14,7 @@ class RecipeCreate(BaseModel):
 
 class Prompt(BaseModel):
     prompt: str
+
+class ChatHistory(BaseModel):
+    id: str
+    messages: List[dict]

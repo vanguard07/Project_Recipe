@@ -28,3 +28,7 @@ class Recipe(BaseModel):
     class Config:
         populate_by_name = True
         json_encoders = {ObjectId: str}
+
+class ChatHistory(BaseModel):
+    id: PyObjectId = Field(default_factory=PyObjectId, alias="_id")
+    messages: List[dict]
