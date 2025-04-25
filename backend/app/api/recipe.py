@@ -238,13 +238,11 @@ async def classify_prompt(request: Request):
         chat_id = request_body.get("chat_id", None)
         if not prompt:
             raise HTTPException(status_code=400, detail="Prompt is required")
-        # If chat_id is provided, retrieve the conversation history
-        if not chat_id:
-            raise HTTPException(status_code=404, detail="Chat not found")
         
-        chat_history = await chat_history_collection.find_one({"_id": ObjectId(chat_id)})
+        # Provide MongoDB schema context to help OpenAI generate relevant queries
+        schema_context = RecipeCreate.model_json_schema()
 
-        system_prompt = """You are an expert at classifying user queries about recipes. Your task is to determine whether a user's input is:
+        system_prompt = f"""You are an expert at classifying user queries about recipes. Your task is to determine whether a user's input is:
 
         1. SEARCH: User wants to find or discover recipes matching certain criteria (ingredients, cuisine, meal type, etc.)
         2. CUSTOMIZE: User wants to modify, adapt, or get advice about existing recipes (substitutions, portion changes, etc.)
@@ -265,20 +263,21 @@ async def classify_prompt(request: Request):
         - Dietary adaptations ("Make this recipe gluten-free")
         - Cooking technique modifications ("Can I bake instead of fry?")
         - Using terms like "change", "replace", "substitute", "adjust", "adapt", "modify", "convert"
-        - Questions about a specific recipe that's being discussed
-        - Follow-up questions about recipe details
 
-        Consider the context of the conversation. If previous messages refer to a specific recipe, the current query is more likely to be a CUSTOMIZE intent.
+        If you feel that questions about a specific recipe that's being discussed or follow-up questions about recipe details can be found in the mongo collection based on the schema {schema_context}, you can classify it as SEARCH.
 
         Return ONLY the classification type with no additional explanation."""
 
         messages = [{"role": "system", "content": system_prompt}]
         
         # Add conversation history for context
-        if chat_history:
-            # Only include the last 5 messages for relevant context
-            conversation_history = chat_history.get("messages", [])[-10:] if chat_history.get("messages") else []
-            messages.extend(conversation_history)
+         # If chat_id is provided, retrieve the conversation history
+        if chat_id:
+            chat_history = await chat_history_collection.find_one({"_id": ObjectId(chat_id)})
+            if chat_history:
+                # Only include the last 5 messages for relevant context
+                conversation_history = chat_history.get("messages", [])[-10:] if chat_history.get("messages") else []
+                messages.extend(conversation_history)
         
         # Add the current prompt
         messages.append({"role": "user", "content": f"Classify this query: '{prompt}'"})

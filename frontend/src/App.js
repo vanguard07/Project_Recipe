@@ -1,13 +1,19 @@
 // src/App.js
 import React from 'react';
-import Chat from './components/Chat';
+import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import Layout from './components/Layout';
 import './App.css';
 
 function App() {
   return (
-    <div className="app">
-      <Chat />
-    </div>
+    <Router>
+      <div className="app">
+        <Routes>
+          <Route path="/" element={<Layout />} />
+          <Route path="/chat/:chatId" element={<Layout />} />
+        </Routes>
+      </div>
+    </Router>
   );
 }
 
