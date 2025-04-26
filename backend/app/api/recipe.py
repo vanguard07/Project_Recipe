@@ -7,8 +7,22 @@ from openai import OpenAI
 import os
 import json
 from bson.objectid import ObjectId
+# Langchain/Chroma imports
+from langchain_openai import OpenAIEmbeddings
+from langchain.docstore.document import Document
+import chromadb
+from app.core.config import settings
+
 # Initialize OpenAI client
-oai_client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))  # Replace with your actual OpenAI API key
+oai_client = OpenAI(api_key=settings.OPENAI_API_KEY)
+
+# Initialize ChromaDB client and embeddings
+embeddings = OpenAIEmbeddings(openai_api_key=settings.OPENAI_API_KEY)
+chroma_client = chromadb.PersistentClient(path=settings.CHROMA_PERSIST_DIR)
+# Ensure the collection exists or create it
+# Using a simple name, adjust metadata/embedding function if needed later
+vector_collection_name = "recipes"
+vector_store = chroma_client.get_or_create_collection(name=vector_collection_name, embedding_function=chromadb.utils.embedding_functions.OpenAIEmbeddingFunction(api_key=settings.OPENAI_API_KEY, model_name="text-embedding-ada-002"))
 
 router = APIRouter()
 
@@ -75,12 +89,14 @@ async def search_recipes(request: Request):
                 # Append the new message to the existing conversation history
                 chat_history["messages"].append({"role": "user", "content": prompt})
                 chat_history["messages"].append({"role": "assistant", "content": json.dumps(result_texts)})
-                await chat_history_collection.update_one({"_id": ObjectId(chat_id)}, {"$set": chat_history})
+                # Ensure type is set or updated
+                await chat_history_collection.update_one({"_id": ObjectId(chat_id)}, {"$set": {"messages": chat_history["messages"], "type": "gpt"}})
         else:
             # Create a new conversation history
             new_chat_history = {
                 "messages": [{"role": "user", "content": f"{prompt}"},
-                {"role": "assistant", "content": json.dumps(result_texts)}]
+                {"role": "assistant", "content": json.dumps(result_texts)}],
+                "type": "gpt" # Add type field
             }
             chat_history_doc = await chat_history_collection.insert_one(new_chat_history)
             chat_id = str(chat_history_doc.inserted_id)
@@ -139,12 +155,19 @@ async def store_recipe_from_url(prompt: Prompt):
             # Extract recipe data from the OpenAI response
             recipe_data = json.loads(openai_response.output_text)
             print(f"AI-extracted recipe data: {recipe_data}")
+            
+            # Basic validation: Check if essential fields are present
+            if not recipe_data.get("title") or not recipe_data.get("ingredients") or not recipe_data.get("instructions"):
+                 raise HTTPException(status_code=422, detail="AI failed to extract essential recipe data (title, ingredients, instructions). The URL might not contain a valid recipe.")
+
         except json.JSONDecodeError:
             raise HTTPException(status_code=422, detail="Failed to parse recipe data from AI response.")
-        
+        except Exception as e: # Catch potential validation errors
+             raise HTTPException(status_code=422, detail=str(e))
+
         # Create a RecipeCreate model instance
         recipe = RecipeCreate(
-            title=recipe_data.get("title").lower(),
+            title=recipe_data.get("title", "Untitled Recipe").lower(), # Provide default title
             ingredients=recipe_data.get("ingredients", []),
             instructions=recipe_data.get("instructions", []),
             cuisine=recipe_data.get("cuisine").lower() if recipe_data.get("cuisine") else None,
@@ -159,9 +182,47 @@ async def store_recipe_from_url(prompt: Prompt):
         recipe_dict = recipe.model_dump()
         result = await recipe_collection.insert_one(recipe_dict)
         created_recipe = await recipe_collection.find_one({"_id": result.inserted_id})
+
+        # --- Add to Chroma Vector Store ---
+        try:
+            # Format recipe data for Langchain Document
+            page_content = f"Title: {created_recipe['title']}\n"
+            if created_recipe.get('cuisine'): page_content += f"Cuisine: {created_recipe['cuisine']}\n"
+            if created_recipe.get('meal_type'): page_content += f"Meal Type: {created_recipe['meal_type']}\n"
+            page_content += f"Ingredients: {'; '.join(created_recipe['ingredients'])}\n"
+            page_content += f"Instructions: {' '.join(created_recipe['instructions'])}\n"
+            if created_recipe.get('tags'): page_content += f"Tags: {', '.join(created_recipe['tags'])}\n"
+
+            metadata = {
+                "source": created_recipe.get('source_url', 'unknown'),
+                "title": created_recipe['title'],
+                "mongo_id": str(created_recipe['_id']) # Store MongoDB ID for reference
+            }
+            if created_recipe.get('cuisine'): metadata['cuisine'] = created_recipe['cuisine']
+            if created_recipe.get('meal_type'): metadata['meal_type'] = created_recipe['meal_type']
+
+            # Create Langchain Document
+            doc = Document(page_content=page_content, metadata=metadata)
+
+            # Add document to Chroma collection
+            vector_store.add(
+                documents=[doc.page_content],
+                metadatas=[doc.metadata],
+                ids=[str(created_recipe['_id'])] # Use MongoDB ID as Chroma ID
+            )
+            print(f"Recipe {created_recipe['_id']} added to Chroma vector store.")
+
+        except Exception as e:
+            # Log the error but don't fail the whole request
+            # If vector store update fails, the recipe is still in MongoDB
+            print(f"Error adding recipe {created_recipe['_id']} to Chroma: {e}")
+        # --- End Chroma Add ---
         
         return created_recipe
         
+    except HTTPException as http_ex:
+        # Re-raise HTTP exceptions directly
+        raise http_ex
     except Exception as e:
         print(f"Error storing recipe from URL: {e}")
         raise HTTPException(status_code=500, detail=f"Error processing recipe from URL: {str(e)}")
@@ -213,7 +274,11 @@ async def customize_recipe(request: Request):
             conversation_history.append({"role": "assistant", "content": customization_data})
 
             # update the conversation history
-            await chat_history_collection.update_one({"_id": ObjectId(chat_id)}, {"$set": {"messages": conversation_history}})
+            await chat_history_collection.update_one(
+                {"_id": ObjectId(chat_id)}, 
+                {"$set": {"messages": conversation_history, "type": "gpt"}}, # Ensure type is set/updated
+                upsert=True # Create if it somehow doesn't exist, though unlikely here
+            )
 
             return {
                 "result": customization_data,

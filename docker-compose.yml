@@ -28,6 +28,7 @@ services:
     volumes:
       - ./backend:/usr/src/app
       - /usr/src/app/node_modules
+      - ./backend/chroma_db:/usr/src/app/chroma_db # Add volume for Chroma DB
 
   frontend:
     build:

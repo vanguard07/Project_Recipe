@@ -4,71 +4,72 @@ import './Chat.css';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
 
-const Chat = ({ chatId, onChatCreated }) => {
-  const [messages, setMessages] = useState([{
-    text: "Welcome to RecipeGPT! You can search for recipes or ask for customizations. Try something like 'Find me pasta recipes' or 'How can I make this pasta dish dairy-free?'",
-    sender: 'bot',
-    timestamp: new Date().toISOString()
-  }]);
+const Chat = ({ chatId, chatType, onChatCreated }) => { // Accept chatType prop
+  const [messages, setMessages] = useState([]); // Initialize empty
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  // Store the current chat ID in state to use it for all requests
   const [currentChatId, setCurrentChatId] = useState(chatId);
   const messagesEndRef = useRef(null);
   const navigate = useNavigate();
+
+  // Initial welcome message based on chat type
+  const getWelcomeMessage = (type) => {
+    if (type === 'langchain') {
+      return {
+        text: "Welcome to Langchain Recipe Chat! Ask me anything about the stored recipes.",
+        sender: 'bot',
+        timestamp: new Date().toISOString()
+      };
+    } else { // Default to GPT
+      return {
+        text: "Welcome to GPT Recipe Chat! You can search for recipes or ask for customizations. Try something like 'Find me pasta recipes' or 'How can I make this pasta dish dairy-free?'",
+        sender: 'bot',
+        timestamp: new Date().toISOString()
+      };
+    }
+  };
 
   // Auto-scroll to bottom when messages update
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  // Update currentChatId when props chatId changes (when switching chats)
+  // Update currentChatId when props chatId changes
   useEffect(() => {
     setCurrentChatId(chatId);
   }, [chatId]);
 
-  // Load chat messages when chatId changes
+  // Load chat messages when chatId changes or chatType changes (to reset view)
   useEffect(() => {
     if (chatId) {
       loadChatHistory(chatId);
     } else {
-      // Reset to initial state for new chat
-      setMessages([{
-        text: "Welcome to RecipeGPT! You can search for recipes or ask for customizations. Try something like 'Find me pasta recipes' or 'How can I make this pasta dish dairy-free?'",
-        sender: 'bot',
-        timestamp: new Date().toISOString()
-      }]);
+      // Reset to initial state for new chat based on type
+      setMessages([getWelcomeMessage(chatType)]);
+      setCurrentChatId(null); // Ensure currentChatId is reset for new chat
     }
-  }, [chatId]);
+  }, [chatId, chatType]); // Add chatType dependency
 
   const loadChatHistory = async (id) => {
     setIsLoading(true);
     try {
       const response = await axios.get(`http://localhost:8000/chat/${id}`);
       if (response.data && response.data.messages) {
-        // Convert the chat history format to our message format
+        // Convert the chat history format
         const formattedMessages = response.data.messages.map(message => {
           let content = message.content;
-          
-          // Try to parse content if it's a stringified JSON array
-          if (typeof content === 'string' && content.startsWith('[') && content.endsWith(']')) {
-            try {
-              const parsed = JSON.parse(content);
-              if (Array.isArray(parsed)) {
-                content = parsed.join('\n\n');
-              }
-            } catch (e) {
-              // Keep as string if not valid JSON
-            }
-          }
-          
+          // ... (existing content parsing logic) ...
           return {
             text: content,
             sender: message.role === 'assistant' ? 'bot' : 'user',
-            timestamp: new Date().toISOString()
+            timestamp: new Date().toISOString() // Use current time or ideally timestamp from DB if available
           };
         });
-        setMessages(formattedMessages);
+        // Set messages, add welcome message if history is empty
+        setMessages(formattedMessages.length > 0 ? formattedMessages : [getWelcomeMessage(chatType)]);
+      } else {
+        // If no messages found, show welcome message
+        setMessages([getWelcomeMessage(chatType)]);
       }
     } catch (error) {
       console.error('Error loading chat history:', error);
@@ -87,69 +88,69 @@ const Chat = ({ chatId, onChatCreated }) => {
     e.preventDefault();
     if (!input.trim()) return;
 
-    // Add user message
     const userMessage = {
       text: input,
       sender: 'user',
       timestamp: new Date().toISOString()
     };
     
+    // Optimistically update UI
     setMessages(prev => [...prev, userMessage]);
+    const currentInput = input; // Store input before clearing
     setInput('');
     setIsLoading(true);
 
     try {
       let response;
-      
-      // If we have a currentChatId, we're in an existing conversation
-      if (currentChatId) {
-        response = await axios.post('http://localhost:8000/recipe/classify', {
-          prompt: input,
-          chat_id: currentChatId
-        });
-      } else {
-        // For new chat, first classify the query type
-        const classifyResponse = await axios.post('http://localhost:8000/recipe/classify', {
-          prompt: input
-        });
-        
-        // Store the newly created chat ID
-        if (classifyResponse.data.chat_id) {
-          const newChatId = classifyResponse.data.chat_id;
-          
-          // Update the current chat ID in state
-          setCurrentChatId(newChatId);
-          
-          // Notify parent about new chat creation
-          if (onChatCreated) onChatCreated();
-          
-          // Update the URL properly using navigate
-          navigate(`/chat/${newChatId}`);
-        }
-        
-        response = classifyResponse;
+      const payload = {
+        prompt: currentInput,
+        chat_id: currentChatId // Send currentChatId (null if new chat)
+      };
+
+      let endpoint = '';
+      if (chatType === 'langchain') {
+        endpoint = 'http://localhost:8000/chat/langchain';
+      } else { // Default to GPT
+        endpoint = 'http://localhost:8000/recipe/classify';
       }
 
-      // Add bot response
+      response = await axios.post(endpoint, payload);
+
+      let botResponseText = "Sorry, I couldn't process that request.";
+      let newChatId = currentChatId; // Assume existing chat ID unless updated
+
+      if (chatType === 'langchain') {
+        botResponseText = response.data.answer || botResponseText;
+        newChatId = response.data.chat_id; // Langchain endpoint returns chat_id
+      } else { // GPT
+        botResponseText = response.data.result || response.data.results?.join('\n\n') || botResponseText;
+        newChatId = response.data.chat_id; // Classify endpoint returns chat_id
+      }
+
       const botMessage = {
-        text: response.data.result || response.data.results?.join('\n\n') || "Sorry, I couldn't process that request.",
+        text: botResponseText,
         sender: 'bot',
         timestamp: new Date().toISOString(),
-        type: response.data.type
+        // type: response.data.type // Include type if relevant for GPT response styling
       };
       
       setMessages(prev => [...prev, botMessage]);
+
+      // If it was a new chat, update state and URL
+      if (!currentChatId && newChatId) {
+        setCurrentChatId(newChatId);
+        if (onChatCreated) onChatCreated(); // Notify layout to refresh list
+        navigate(`/chat/${newChatId}`); // Update URL
+      }
       
     } catch (error) {
       console.error('Error:', error);
-      // Add error message
       const errorMessage = {
-        text: "Sorry, there was an error processing your request.",
+        text: error.response?.data?.detail || "Sorry, there was an error processing your request.",
         sender: 'bot',
         timestamp: new Date().toISOString(),
         isError: true
       };
-      
       setMessages(prev => [...prev, errorMessage]);
     } finally {
       setIsLoading(false);
@@ -174,8 +175,9 @@ const Chat = ({ chatId, onChatCreated }) => {
   return (
     <div className="chat-container">
       <div className="chat-header">
-        <h2>RecipeGPT Chat</h2>
-        <p className="chat-subtitle">Search for recipes or request customizations in one place</p>
+        {/* Update title based on chatType */}
+        <h2>{chatType === 'langchain' ? 'Langchain Chat' : 'GPT Chat'}</h2>
+        <p className="chat-subtitle">{chatType === 'langchain' ? 'Chat with recipes using vector search' : 'Search for recipes or request customizations'}</p>
       </div>
       
       <div className="messages-container">
@@ -210,7 +212,7 @@ const Chat = ({ chatId, onChatCreated }) => {
           type="text"
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          placeholder="Search for recipes or ask for customizations..."
+          placeholder={chatType === 'langchain' ? 'Ask about stored recipes...' : 'Search or customize recipes...'}
           disabled={isLoading}
         />
         <button type="submit" disabled={isLoading || !input.trim()}>

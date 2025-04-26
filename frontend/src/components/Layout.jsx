@@ -2,38 +2,60 @@ import React, { useState, useEffect } from 'react';
 import './Layout.css';
 import Chat from './Chat';
 import RecipeStore from './RecipeStore';
-import { useNavigate, useParams } from 'react-router-dom';
+// Import useLocation
+import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import axios from 'axios';
 
 const Layout = () => {
   const [chats, setChats] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState('chat');
+  const [activeTab, setActiveTab] = useState('gpt'); // Default to GPT chat
   const navigate = useNavigate();
   const { chatId } = useParams();
+  const location = useLocation(); // Get location object
 
-  // Fetch chat histories when component mounts
+  // Determine the chatId to pass to the Chat component based on the URL path
+  const chatComponentChatId = location.pathname.startsWith('/chat/') ? chatId : undefined;
+
+  // Fetch chat histories when component mounts or activeTab changes
   useEffect(() => {
-    fetchChats();
-  }, []);
+    if (activeTab === 'gpt' || activeTab === 'langchain') {
+      fetchChats(activeTab);
+    }
+    // Clear chats list when switching to store tab
+    if (activeTab === 'store') {
+        setChats([]);
+    }
+    // If a chatId is present in URL, try to determine the correct tab
+    // This might require an extra fetch or logic if switching tabs directly via URL isn't the primary flow
+  }, [activeTab]); // Re-fetch when activeTab changes
 
-  const fetchChats = async () => {
+  // Fetch specific chat when chatId changes (if needed, or rely on Chat component)
+  // useEffect(() => {
+  //   if (chatId) { /* Potentially fetch chat details to set activeTab? */ }
+  // }, [chatId]);
+
+  const fetchChats = async (type) => {
     setIsLoading(true);
     try {
-      const response = await axios.get('http://localhost:8000/chat');
+      // Pass the chat type as a query parameter
+      const response = await axios.get(`http://localhost:8000/chat?type=${type}`);
       setChats(response.data);
     } catch (error) {
       console.error('Error fetching chats:', error);
+      setChats([]); // Clear chats on error
     } finally {
       setIsLoading(false);
     }
   };
 
   const createNewChat = () => {
+    // Navigate to base URL, the Chat component will handle creating a new chat for the active tab type
     navigate('/');
   };
 
   const selectChat = (chatId) => {
+    // Navigate to the specific chat URL, activeTab remains the same
     navigate(`/chat/${chatId}`);
   };
 
@@ -41,7 +63,8 @@ const Layout = () => {
     event.stopPropagation();
     try {
       await axios.delete(`http://localhost:8000/chat/${chatId}`);
-      setChats(chats.filter(chat => chat.id !== chatId));
+      // Refetch chats for the current active tab after deletion
+      fetchChats(activeTab);
       
       // If the deleted chat was active, navigate to home
       if (window.location.pathname.includes(chatId)) {
@@ -84,10 +107,16 @@ const Layout = () => {
 
         <div className="tabs">
           <button 
-            className={`tab ${activeTab === 'chat' ? 'active' : ''}`} 
-            onClick={() => setActiveTab('chat')}
+            className={`tab ${activeTab === 'gpt' ? 'active' : ''}`} 
+            onClick={() => setActiveTab('gpt')}
           >
-            Chat
+            GPT Chat
+          </button>
+          <button 
+            className={`tab ${activeTab === 'langchain' ? 'active' : ''}`} 
+            onClick={() => setActiveTab('langchain')}
+          >
+            Langchain Chat
           </button>
           <button 
             className={`tab ${activeTab === 'store' ? 'active' : ''}`} 
@@ -97,20 +126,22 @@ const Layout = () => {
           </button>
         </div>
 
-        {activeTab === 'chat' && (
+        {(activeTab === 'gpt' || activeTab === 'langchain') && (
           <div className="chat-list">
             {isLoading ? (
               <div className="loading-chats">Loading...</div>
             ) : chats.length === 0 ? (
-              <div className="empty-chats">No chat history</div>
+              <div className="empty-chats">No {activeTab === 'gpt' ? 'GPT' : 'Langchain'} chats</div>
             ) : (
+              // Use chatComponentChatId for highlighting the active item
               chats.map((chat) => (
                 <div 
                   key={chat.id} 
-                  className={`chat-item ${chat.id === chatId ? 'active' : ''}`}
+                  className={`chat-item ${chat.id === chatComponentChatId ? 'active' : ''}`}
                   onClick={() => selectChat(chat.id)}
                 >
-                  <span className="chat-title">{formatChatPreview(chat.messages)}</span>
+                  {/* Use preview from backend if available, otherwise format */}
+                  <span className="chat-title">{chat.preview || formatChatPreview(chat.messages)}</span>
                   <button 
                     className="delete-chat-btn"
                     onClick={(e) => deleteChat(chat.id, e)}
@@ -126,8 +157,11 @@ const Layout = () => {
       </div>
 
       <div className="main-content">
-        {activeTab === 'chat' ? (
-          <Chat chatId={chatId} onChatCreated={fetchChats} />
+        {/* Pass the conditionally determined chatComponentChatId to Chat components */}
+        {activeTab === 'gpt' ? (
+          <Chat chatId={chatComponentChatId} chatType="gpt" onChatCreated={() => fetchChats('gpt')} />
+        ) : activeTab === 'langchain' ? (
+          <Chat chatId={chatComponentChatId} chatType="langchain" onChatCreated={() => fetchChats('langchain')} />
         ) : (
           <RecipeStore />
         )}
