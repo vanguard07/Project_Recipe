@@ -20,10 +20,12 @@ class Recipe(BaseModel):
     instructions: List[str]
     cuisine: Optional[str] = None
     meal_type: Optional[str] = None
-    prep_time: Optional[str] = None
-    cook_time: Optional[str] = None
+    prep_time_in_mins: Optional[int] = None
+    cook_time_in_mins: Optional[int] = None
     tags: Optional[List[str]] = []
     source_url: Optional[str] = None
+    estimated_calories: Optional[float] = None
+    nutrients_present: Optional[List[str]] = []
 
     class Config:
         populate_by_name = True

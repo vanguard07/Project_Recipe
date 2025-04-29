@@ -55,6 +55,11 @@ async def search_recipes(request: Request):
             input=[
                 {"role": "system", "content": f"""Given the following MongoDB schema context for recipes: {schema_context}.
                 Generate a dictionary containing key value pairs of the components which can be used in MongoDB search query to search recipes in the collection based on the user's natural language input query.
+                Use MongoDB query operators like $lt, $lte, $gt, $gte for numerical comparisons (e.g., time, calories, protein, fat).
+                For example, 'quick 10 min recipe' might translate to {{'total_time_in_mins': {{'$lte': 10}}}}.
+                'High protein' might translate to {{'protein_grams': {{'$gte': 20}}}} (assuming 20g is 'high').
+                'Low fat' might translate to {{'fat_grams': {{'$lte': 10}}}} (assuming 10g is 'low').
+                Use reasonable thresholds for terms like 'high'/'low' if not specified.
                 Return ONLY the dictionary in valid JSON format without any formatting, explanations or comments."""
                 },
                 {"role": "user", "content": f"{prompt}"},
@@ -70,10 +75,10 @@ async def search_recipes(request: Request):
             raise HTTPException(status_code=422, detail="Failed to parse query from AI response.")
         
         # Execute the response aggregation query in the recipe collection
-        # pipeline = json.loads(response.get('query'))
-        recipes = await recipe_collection.find(response).to_list(100)
+        print(f"Executing MongoDB query: {response}") # Log the query
+        recipes = await recipe_collection.find(response).to_list(100) # Limit results
         if not recipes:
-            return {"message": "Cannot help with this, let's try something else."}
+            return {"result": "Cannot help with this, let's try something else."}
 
         # Format results into text output (you can customize as needed)
         result_texts = []
@@ -125,7 +130,7 @@ async def store_recipe_from_url(prompt: Prompt):
             model="gpt-4.1-nano",
             input=[
                 {"role": "system", "content": "You are a recipe extraction expert. Your task is to analyze recipe webpages and extract structured recipe information according to a specific schema."},
-                {"role": "user", "content": f"Extract the recipe information from this webpage and format it according to the following schema: {schema_context}. Here's the webpage link: {url}. The expected output should include the title, ingredients, instructions, cuisine, meal type, prep time, cook time, and tags. If any of these fields are not available on the webpage, return null for those fields. If you're unable to extract the recipe or if the webpage contains data related to anything other than recipe, return an empty object. DO NOT HALLUCINATE OR MAKE UP ANY DATA!"},
+                {"role": "user", "content": f"Extract the recipe information from this webpage and format it according to the following schema: {schema_context}. Here's the webpage link: {url}. The expected output should include the title, ingredients, instructions, cuisine, meal type, prep time, cook time, total time, tags, estimated calories per serving, protein grams per serving, fat grams per serving and list of nutrients which the dish is rich in. Return the prep time, cook time and total time in minutes. If any of these fields are not available on the webpage, return null for those fields. If you're unable to extract the recipe or if the webpage contains data related to anything other than recipe, return an empty object. DO NOT HALLUCINATE OR MAKE UP ANY DATA!"},
             ],
             text={
                 "format": {
@@ -139,11 +144,17 @@ async def store_recipe_from_url(prompt: Prompt):
                             "instructions": {"type": "array", "items": {"type": "string"}},
                             "cuisine": {"type": ["string", "null"]},
                             "meal_type": {"type": ["string", "null"]},
-                            "prep_time": {"type": ["string", "null"]},
-                            "cook_time": {"type": ["string", "null"]},
+                            "prep_time_in_mins": {"type": ["number", "null"]},
+                            "cook_time_in_mins": {"type": ["number", "null"]},
+                            "total_time_in_mins": {"type": ["number", "null"]}, # Added total time
                             "tags": {"type": "array", "items": {"type": "string"}},
+                            "estimated_calories": {"type": ["number", "null"]},
+                            "protein_grams": {"type": ["number", "null"]}, # Added protein
+                            "fat_grams": {"type": ["number", "null"]}, # Added fat
+                            "nutrients_present": {"type": "array", "items": {"type": "string"}}
                         },
-                        "required": ["title", "ingredients", "instructions", "cuisine", "meal_type", "prep_time", "cook_time", "tags"],
+                        # Updated required fields
+                        "required": ["title", "ingredients", "instructions", "cuisine", "meal_type", "prep_time_in_mins", "cook_time_in_mins", "total_time_in_mins", "tags", "estimated_calories", "protein_grams", "fat_grams", "nutrients_present"],
                         "additionalProperties": False
                     },
                     "strict": True
@@ -172,10 +183,15 @@ async def store_recipe_from_url(prompt: Prompt):
             instructions=recipe_data.get("instructions", []),
             cuisine=recipe_data.get("cuisine").lower() if recipe_data.get("cuisine") else None,
             meal_type=recipe_data.get("meal_type").lower() if recipe_data.get("meal_type") else None,
-            prep_time=recipe_data.get("prep_time"). lower() if recipe_data.get("prep_time") else None,
-            cook_time=recipe_data.get("cook_time").lower() if recipe_data.get("cook_time") else None,
+            prep_time_in_mins=recipe_data.get("prep_time_in_mins"),
+            cook_time_in_mins=recipe_data.get("cook_time_in_mins"),
+            total_time_in_mins=recipe_data.get("total_time_in_mins"), # Added total time
             tags=[tag.lower() for tag in recipe_data.get("tags", [])],
-            source_url=url  # Store the original URL
+            source_url=url,  # Store the original URL,
+            estimated_calories=recipe_data.get("estimated_calories"),
+            protein_grams=recipe_data.get("protein_grams"), # Added protein
+            fat_grams=recipe_data.get("fat_grams"), # Added fat
+            nutrients_present=[nutrient.lower() for nutrient in recipe_data.get("nutrients_present", [])]
         )
         
         # Store the recipe in the database
@@ -192,6 +208,13 @@ async def store_recipe_from_url(prompt: Prompt):
             page_content += f"Ingredients: {'; '.join(created_recipe['ingredients'])}\n"
             page_content += f"Instructions: {' '.join(created_recipe['instructions'])}\n"
             if created_recipe.get('tags'): page_content += f"Tags: {', '.join(created_recipe['tags'])}\n"
+            if created_recipe.get('estimated_calories'): page_content += f"Estimated Calories: {created_recipe['estimated_calories']}\n"
+            if created_recipe.get('protein_grams'): page_content += f"Protein: {created_recipe['protein_grams']}g\n" # Added protein
+            if created_recipe.get('fat_grams'): page_content += f"Fat: {created_recipe['fat_grams']}g\n" # Added fat
+            if created_recipe.get('nutrients_present'): page_content += f"Nutrients Present: {', '.join(created_recipe['nutrients_present'])}\n"
+            if created_recipe.get('prep_time_in_mins'): page_content += f"Prep Time: {created_recipe['prep_time_in_mins']} mins\n"
+            if created_recipe.get('cook_time_in_mins'): page_content += f"Cook Time: {created_recipe['cook_time_in_mins']} mins\n"
+            if created_recipe.get('total_time_in_mins'): page_content += f"Total Time: {created_recipe['total_time_in_mins']} mins\n" # Added total time
 
             metadata = {
                 "source": created_recipe.get('source_url', 'unknown'),
@@ -200,6 +223,10 @@ async def store_recipe_from_url(prompt: Prompt):
             }
             if created_recipe.get('cuisine'): metadata['cuisine'] = created_recipe['cuisine']
             if created_recipe.get('meal_type'): metadata['meal_type'] = created_recipe['meal_type']
+            # Optionally add new fields to metadata if useful for filtering in Chroma
+            if created_recipe.get('total_time_in_mins') is not None: metadata['total_time_in_mins'] = created_recipe['total_time_in_mins']
+            if created_recipe.get('protein_grams') is not None: metadata['protein_grams'] = created_recipe['protein_grams']
+            if created_recipe.get('fat_grams') is not None: metadata['fat_grams'] = created_recipe['fat_grams']
 
             # Create Langchain Document
             doc = Document(page_content=page_content, metadata=metadata)
@@ -309,7 +336,7 @@ async def classify_prompt(request: Request):
 
         system_prompt = f"""You are an expert at classifying user queries about recipes. Your task is to determine whether a user's input is:
 
-        1. SEARCH: User wants to find or discover recipes matching certain criteria (ingredients, cuisine, meal type, etc.)
+        1. SEARCH: User wants to find or discover recipes matching certain criteria (ingredients, cuisine, meal type, time constraints, nutritional info like protein/fat/calories, etc.)
         2. CUSTOMIZE: User wants to modify, adapt, or get advice about existing recipes (substitutions, portion changes, etc.)
         3. OTHER: Query is unrelated to recipes or cannot be categorized as search or customize
 
@@ -320,6 +347,8 @@ async def classify_prompt(request: Request):
         - Requests for dishes from specific cuisines ("Thai dishes")
         - Meal-type queries ("breakfast ideas", "dinner recipes")
         - Diet-specific recipe requests ("keto recipes", "vegan meals")
+        - Queries based on time ("quick 10 min recipes", "recipes under 30 minutes") # Added time
+        - Queries based on nutritional info ("high protein low fat meals", "low calorie desserts") # Added nutrition
         - Using terms like "find", "show me", "what are", "recipes for", "how to make"
 
         CUSTOMIZE indicators:
