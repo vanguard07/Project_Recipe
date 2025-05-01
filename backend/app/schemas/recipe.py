@@ -23,3 +23,6 @@ class Prompt(BaseModel):
 class ChatHistory(BaseModel):
     id: str
     messages: List[dict]
+class LangchainChatInput(BaseModel):
+    prompt: str
+    chat_id: Optional[str] = None

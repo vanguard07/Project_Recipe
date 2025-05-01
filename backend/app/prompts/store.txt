@@ -1,0 +1,26 @@
+Extract the recipe information from this webpage and format it according to the following schema: {schema_context}.
+
+Here's the webpage link: {url}
+
+The expected output should include:
+- title
+- ingredients
+- instructions
+- cuisine
+- meal type
+- prep time
+- cook time
+- total time
+- tags
+- estimated calories per serving
+- protein grams per serving
+- fat grams per serving
+- list of nutrients which the dish is rich in
+
+Guidelines:
+- Return prep time, cook time, and total time in minutes.
+- If any of these fields are not available on the webpage, return null for those fields.
+- If you're unable to extract the recipe, or if the webpage is not a recipe page, return an empty object: {}
+
+Strict Rule:
+DO NOT HALLUCINATE OR MAKE UP ANY DATA.

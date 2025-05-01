@@ -9,6 +9,7 @@ requests==2.32.0
 pymongo==4.12.0
 langchain==0.3.24 # Add langchain core
 langchain-openai==0.3.14 # Add langchain openai integration
-chromadb==1.0.7 # Add chromadb vector store
+# chromadb==1.0.7 # Add chromadb vector store
 tiktoken==0.9.0 # Add tiktoken tokenizer
 langchain-community==0.3.22
+langchain_chroma==0.2.3

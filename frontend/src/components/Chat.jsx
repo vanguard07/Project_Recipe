@@ -109,7 +109,7 @@ const Chat = ({ chatId, chatType, onChatCreated }) => { // Accept chatType prop
 
       let endpoint = '';
       if (chatType === 'langchain') {
-        endpoint = 'http://localhost:8000/chat/langchain';
+        endpoint = 'http://localhost:8000/recipe/langchain';
       } else { // Default to GPT
         endpoint = 'http://localhost:8000/recipe/classify';
       }
