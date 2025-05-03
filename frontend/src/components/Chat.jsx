@@ -3,6 +3,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import './Chat.css';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
+import ReactMarkdown from 'react-markdown';
 
 const Chat = ({ chatId, chatType, onChatCreated }) => { // Accept chatType prop
   const [messages, setMessages] = useState([]); // Initialize empty
@@ -29,17 +30,12 @@ const Chat = ({ chatId, chatType, onChatCreated }) => { // Accept chatType prop
     }
   };
 
-  // Auto-scroll to bottom when messages update
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
-
   // Update currentChatId when props chatId changes
   useEffect(() => {
     setCurrentChatId(chatId);
   }, [chatId]);
 
-  // Load chat messages when chatId changes or chatType changes (to reset view)
+  // Only load chat history when chatId changes
   useEffect(() => {
     if (chatId) {
       loadChatHistory(chatId);
@@ -49,6 +45,11 @@ const Chat = ({ chatId, chatType, onChatCreated }) => { // Accept chatType prop
       setCurrentChatId(null); // Ensure currentChatId is reset for new chat
     }
   }, [chatId, chatType]); // Add chatType dependency
+
+  // Scroll to bottom only when chatId changes or a new message is added
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
 
   const loadChatHistory = async (id) => {
     setIsLoading(true);
@@ -187,7 +188,11 @@ const Chat = ({ chatId, chatType, onChatCreated }) => { // Accept chatType prop
             className={`message ${message.sender === 'user' ? 'user-message' : 'bot-message'} ${message.isError ? 'error-message' : ''} ${message.type ? `type-${message.type}` : ''}`}
           >
             <div className="message-content">
-              {message.text}
+              {message.sender === 'bot' ? (
+                <ReactMarkdown>{message.text}</ReactMarkdown>
+              ) : (
+                message.text
+              )}
               {message.changes && renderChanges(message.changes)}
             </div>
             <div className="message-timestamp">

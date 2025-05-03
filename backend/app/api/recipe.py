@@ -155,6 +155,40 @@ async def _store_recipe_and_vectorize(recipe: RecipeCreate) -> Recipe:
     return created_recipe
 # --- End Helper function ---
 
+def prettify_response_with_openai(raw_response, response_type="general"):
+    """
+    Uses OpenAI API to convert raw MongoDB or RAG output into a more readable, user-friendly format for frontend display.
+    The original response is not modified in storage.
+    Args:
+        raw_response: The raw output (string, dict, or list) from MongoDB or RAG
+        response_type: Optional type hint (e.g., 'search', 'recipe_info', 'customize', 'general')
+    Returns:
+        A prettified string suitable for frontend display
+    """
+    # Prepare the system prompt
+    system_prompt = (
+        "You are an expert at formatting recipe chatbot responses for end users. "
+        "Given the following raw data from a database or retrieval-augmented generation (RAG) system, convert it into a clear, concise, and visually organized format suitable for display in a chat UI in a markdown format. Use lists, bullet points, and step numbers where appropriate. Highlight key information such as recipe titles, ingredients, instructions, and nutrition. Do not add any extra commentary or explanation. Only return the formatted content in a markdown format. "
+        f"The response type is: {response_type}."
+    )
+    # Convert raw_response to string if needed
+    if not isinstance(raw_response, str):
+        try:
+            pretty_input = json.dumps(raw_response, indent=2, ensure_ascii=False)
+        except Exception:
+            pretty_input = str(raw_response)
+    else:
+        pretty_input = raw_response
+
+    openai_response = oai_client.responses.create(
+        model="gpt-4o-mini",
+        input=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": pretty_input}
+        ],
+    )
+    return openai_response.output_text
+
 @router.post("/", response_model=Recipe)
 async def create_recipe(recipe: RecipeCreate):
     recipe_dict = recipe.model_dump()
@@ -213,6 +247,8 @@ async def search_recipes(request: Request):
             text = f"Title: {rec.get('title')}\nIngredients: {', '.join(rec.get('ingredients', []))}\nInstructions: {', '.join(rec.get('instructions', []))}"
             result_texts.append(text)
         
+        prettified_response = prettify_response_with_openai(result_texts, response_type='search')
+        
         # If chat_id is provided, store the conversation history else create a new one
         if chat_id:
             chat_history = await chat_history_collection.find_one({"_id": ObjectId(chat_id)})
@@ -220,21 +256,22 @@ async def search_recipes(request: Request):
             if chat_history:
                 # Append the new message to the existing conversation history
                 chat_history["messages"].append({"role": "user", "content": prompt})
-                chat_history["messages"].append({"role": "assistant", "content": json.dumps(result_texts)})
+                chat_history["messages"].append({"role": "assistant", "content": prettified_response})
                 # Ensure type is set or updated
                 await chat_history_collection.update_one({"_id": ObjectId(chat_id)}, {"$set": {"messages": chat_history["messages"], "type": "gpt"}})
         else:
             # Create a new conversation history
             new_chat_history = {
                 "messages": [{"role": "user", "content": f"{prompt}"},
-                {"role": "assistant", "content": json.dumps(result_texts)}],
-                "type": "gpt" # Add type field
+                {"role": "assistant", "content": prettified_response}],
+                "type": "gpt"
             }
             chat_history_doc = await chat_history_collection.insert_one(new_chat_history)
             chat_id = str(chat_history_doc.inserted_id)
             print(f"New chat history created with ID: {chat_id}")
 
-        return {"results": result_texts, "chat_id": chat_id}
+        print(prettified_response)
+        return {"result": prettified_response, "chat_id": chat_id}
     
     except Exception as e:
         print(f"Error generating query: {e}")
@@ -458,7 +495,7 @@ async def classify_prompt(request: Request):
                         "properties": {
                             "type": {
                                 "type": "string",
-                                "enum": ["search", "customize"],
+                                "enum": ["search", "customize", "other"],
                                 "description": "The classification of the user query"
                             },
                             "confidence": {
@@ -493,7 +530,7 @@ async def classify_prompt(request: Request):
             return await search_recipes(request)
         else:
             return {
-                "message": "I'm not sure how to help with that query. Could you try asking about a recipe search or customization?",
+                "result": "I'm not sure how to help with that query. Could you try asking about a recipe search or customization?",
                 "chat_id": chat_id
             }
 
