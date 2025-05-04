@@ -34,3 +34,8 @@ class Recipe(BaseModel):
 class ChatHistory(BaseModel):
     id: PyObjectId = Field(default_factory=PyObjectId, alias="_id")
     messages: List[dict]
+    type: Optional[str] = "gpt"  # Default to "gpt", can also be "langchain"
+    
+    class Config:
+        populate_by_name = True
+        json_encoders = {ObjectId: str}

@@ -1,4 +1,4 @@
-Extract the recipe information from this webpage and format it according to the following schema: {schema_context}.
+Extract the recipe information from this webpage and format it according to the following schema: {schema_context}
 
 Here's the webpage link: {url}
 
@@ -20,7 +20,7 @@ The expected output should include:
 Guidelines:
 - Return prep time, cook time, and total time in minutes.
 - If any of these fields are not available on the webpage, return null for those fields.
-- If you're unable to extract the recipe, or if the webpage is not a recipe page, return an empty object: {}
+- If you're unable to extract the recipe, or if the webpage is not a recipe page, return an empty object: {{}}
 
 Strict Rule:
 DO NOT HALLUCINATE OR MAKE UP ANY DATA.

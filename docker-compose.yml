@@ -37,15 +37,14 @@ services:
     container_name: recipegpt-frontend
     restart: always
     ports:
-      - "3000:80"
+      - "3000:3000"
     depends_on:
       - backend
     volumes:
       - ./frontend:/app
       - /app/node_modules
     environment:
-      - NODE_ENV=development
-      - REACT_APP_API_URL=/api
+      - NEXT_PUBLIC_API_URL=http://localhost:8000/
 
 volumes:
   mongodb-data:

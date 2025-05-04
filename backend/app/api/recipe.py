@@ -155,22 +155,17 @@ async def _store_recipe_and_vectorize(recipe: RecipeCreate) -> Recipe:
     return created_recipe
 # --- End Helper function ---
 
-def prettify_response_with_openai(raw_response, response_type="general"):
-    """
-    Uses OpenAI API to convert raw MongoDB or RAG output into a more readable, user-friendly format for frontend display.
-    The original response is not modified in storage.
-    Args:
-        raw_response: The raw output (string, dict, or list) from MongoDB or RAG
-        response_type: Optional type hint (e.g., 'search', 'recipe_info', 'customize', 'general')
-    Returns:
-        A prettified string suitable for frontend display
-    """
+def prettify_response_with_openai(raw_response, prompt=None, response_type="general"):
     # Prepare the system prompt
     system_prompt = (
         "You are an expert at formatting recipe chatbot responses for end users. "
-        "Given the following raw data from a database or retrieval-augmented generation (RAG) system, convert it into a clear, concise, and visually organized format suitable for display in a chat UI in a markdown format. Use lists, bullet points, and step numbers where appropriate. Highlight key information such as recipe titles, ingredients, instructions, and nutrition. Do not add any extra commentary or explanation. Only return the formatted content in a markdown format. "
+        "Given the following raw data from a database or retrieval-augmented generation (RAG) system, convert it into a clear, concise, and visually organized format suitable for display in a chat UI. Use lists, bullet points, and step numbers where appropriate. Highlight key information such as recipe titles, ingredients, instructions, and nutrition. Do not add any extra commentary or explanation. Only return the formatted content based on the user's query. "
         f"The response type is: {response_type}."
     )
+
+    if prompt:
+        system_prompt += f" The user prompt was: {prompt}"
+
     # Convert raw_response to string if needed
     if not isinstance(raw_response, str):
         try:
@@ -181,7 +176,7 @@ def prettify_response_with_openai(raw_response, response_type="general"):
         pretty_input = raw_response
 
     openai_response = oai_client.responses.create(
-        model="gpt-4o-mini",
+        model="gpt-4.1-nano",
         input=[
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": pretty_input}
@@ -218,13 +213,21 @@ async def search_recipes(request: Request):
         # Format the system prompt with the schema context
         system_prompt_content = SEARCH_SYSTEM_PROMPT_TEMPLATE.format(schema_context=schema_context)
 
+        messages = [{"role": "system", "content": system_prompt_content}]
+
+        chat_history = await chat_history_collection.find_one({"_id": ObjectId(chat_id)})
+        if chat_history:
+            # Only include the last 10 messages for relevant context
+            conversation_history = chat_history.get("messages", [])[-10:] if chat_history.get("messages") else []
+            messages.extend(conversation_history)
+
+        # Add the current prompt
+        messages.append({"role": "user", "content": f"Prepare the filter based on the ongoing conversation: {prompt}"})
+
         # Request MongoDB query from OpenAI
         openai_response = oai_client.responses.create(
-            model="gpt-4o-mini",
-            input=[
-                    {"role": "system", "content": system_prompt_content},
-                    {"role": "user", "content": prompt},
-                ],
+            model="o3-mini",
+            input=messages,
         )
         
         try:
@@ -236,6 +239,8 @@ async def search_recipes(request: Request):
             raise HTTPException(status_code=422, detail="Failed to parse query from AI response.")
 
         # Execute the response aggregation query in the recipe collection
+        if isinstance(response, dict) and len(response) == 0:
+            return {"result": "Cannot help with this, let's try something else.", chat_id: chat_id}
         print(f"Executing MongoDB query: {response}") # Log the query
         recipes = await recipe_collection.find(response).to_list(100) # Limit results
         if not recipes:
@@ -247,7 +252,7 @@ async def search_recipes(request: Request):
             text = f"Title: {rec.get('title')}\nIngredients: {', '.join(rec.get('ingredients', []))}\nInstructions: {', '.join(rec.get('instructions', []))}"
             result_texts.append(text)
         
-        prettified_response = prettify_response_with_openai(result_texts, response_type='search')
+        prettified_response = prettify_response_with_openai(recipes, prompt, response_type='search')
         
         # If chat_id is provided, store the conversation history else create a new one
         if chat_id:
@@ -282,11 +287,12 @@ async def search_recipes(request: Request):
 
 
 @router.post("/store", response_model=Recipe)
-async def store_recipe_from_url(prompt: Prompt):
+async def store_recipe_from_url(request: Request):
     try:
         # Extract URL from the user prompt
-        url = prompt.prompt.strip()
-        
+        request_body = await request.json()
+        url = request_body.get("url", "")
+        print(f"Received URL: {url}", type(url))
         # Validate URL format (basic check)
         if not url.startswith(('http://', 'https://')):
             raise HTTPException(status_code=400, detail="Invalid URL format. Please provide a valid recipe website URL.")
@@ -297,7 +303,8 @@ async def store_recipe_from_url(prompt: Prompt):
         # Define the schema context for OpenAI
         schema_context = RecipeCreate.model_json_schema()
 
-        system_prompt_content = STORE_SYSTEM_PROMPT_TEMPLATE.format(schema_context=schema_context)
+        # Format the prompt with the URL and schema context in one step
+        system_prompt_content = STORE_SYSTEM_PROMPT_TEMPLATE.format(url=url, schema_context=json.dumps(schema_context))
         
         # Request OpenAI to extract recipe data from the webpage
         openai_response = oai_client.responses.create(
@@ -320,14 +327,13 @@ async def store_recipe_from_url(prompt: Prompt):
                             "meal_type": {"type": ["string", "null"]},
                             "prep_time_in_mins": {"type": ["number", "null"]},
                             "cook_time_in_mins": {"type": ["number", "null"]},
-                            "total_time_in_mins": {"type": ["number", "null"]}, # Added total time
+                            "total_time_in_mins": {"type": ["number", "null"]}, 
                             "tags": {"type": "array", "items": {"type": "string"}},
                             "estimated_calories": {"type": ["number", "null"]},
-                            "protein_grams": {"type": ["number", "null"]}, # Added protein
-                            "fat_grams": {"type": ["number", "null"]}, # Added fat
+                            "protein_grams": {"type": ["number", "null"]}, 
+                            "fat_grams": {"type": ["number", "null"]}, 
                             "nutrients_present": {"type": "array", "items": {"type": "string"}}
                         },
-                        # Updated required fields
                         "required": ["title", "ingredients", "instructions", "cuisine", "meal_type", "prep_time_in_mins", "cook_time_in_mins", "total_time_in_mins", "tags", "estimated_calories", "protein_grams", "fat_grams", "nutrients_present"],
                         "additionalProperties": False
                     },
@@ -542,13 +548,14 @@ async def classify_prompt(request: Request):
     
 
 @router.post("/langchain", response_model=Dict[str, Any])
-async def langchain_chat(chat_input: LangchainChatInput):
+async def langchain_chat(request: Request):
     """
     Handle chat requests using Langchain chains, manually managing history
     in a single MongoDB document per chat session.
     """
-    user_input = chat_input.prompt
-    chat_id = chat_input.chat_id
+    request_body = await request.json()
+    user_input = request_body.get("prompt", "")
+    chat_id = request_body.get("chat_id", None)
     messages_for_db = [] # To store history in simple dict format for DB
     chat_history_for_chain = [] # To store history in Langchain BaseMessage format
 
@@ -675,11 +682,11 @@ async def langchain_chat(chat_input: LangchainChatInput):
                         print(f"Stored AI-generated recipe with ID: {created_recipe['_id']}")
 
                         # Set the user-facing answer
-                        final_answer_for_user = (f"I couldn't find a matching recipe in the database, but I generated one using AI and have now added it for future reference.\n\n"
+                        final_answer_for_user = prettify_response_with_openai((f"I couldn't find a matching recipe in the database, but I generated one using AI and have now added it for future reference.\n\n"
                                                  f"Title: {created_recipe['title']}\n"
                                                  f"Ingredients: {', '.join(created_recipe['ingredients'])}\n"
                                                 f"Instructions: {', '.join(created_recipe['instructions'])}\n"
-                                                 f"(You can ask me about '{created_recipe['title']}' now.)")
+                                                 f"(You can ask me about '{created_recipe['title']}' now.)"))
                     else:
                         # Extraction failed or didn't yield a valid recipe
                         print("Fallback content could not be parsed as a recipe.")

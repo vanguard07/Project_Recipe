@@ -21,6 +21,7 @@ The recipe documents follow this schema:
 - Do not include any explanation, markdown, comments, or extra formatting.
 - Respond ONLY with the JSON object representing the filter.
 - The output must be valid JSON.
+- If you're not able to formulate a query, return empty object.
 
 ### Examples:
 User query: "Show me high protein chicken recipes"
@@ -28,5 +29,3 @@ Output: {{"protein_grams": {{"$gte": 20}}, "ingredients": {{"$in": ["chicken"]}}
 
 User query: "Quick low fat Italian dishes"
 Output: {{"total_time_in_mins": {{"$lte": 15}}, "fat_grams": {{"$lte": 10}}, "cuisine": {{"$regex": "Italian", "$options": "i"}}}}
-
-Now generate the filter dictionary for the following user query:
