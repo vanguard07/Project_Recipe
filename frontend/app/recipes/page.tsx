@@ -110,26 +110,6 @@ export default function RecipesPage() {
     }
   }
 
-  const deleteRecipe = async (id: string) => {
-    try {
-      // Call the backend delete endpoint
-      const response = await fetch(`http://localhost:8000/recipe/${id}`, {
-        method: 'DELETE',
-      });
-
-      if (!response.ok) {
-        throw new Error(`Failed to delete recipe: ${response.status}`);
-      }
-
-      // Remove the recipe from the state
-      const updatedRecipes = recipes.filter((recipe) => recipe.id !== id)
-      setRecipes(updatedRecipes)
-    } catch (error) {
-      console.error("Error deleting recipe:", error)
-      alert("Failed to delete the recipe. Please try again.")
-    }
-  }
-
   return (
     <div className="container py-6">
       <div className="mb-6">
@@ -163,11 +143,11 @@ export default function RecipesPage() {
             <div key={recipe.id} className="border rounded-lg overflow-hidden bg-background">
               <div className="flex flex-col md:flex-row">
                 {recipe.imageUrl && (
-                  <div className="w-full md:w-1/3 lg:w-1/4">
+                  <div className="w-full md:w-1/4 lg:w-1/5 max-h-[240px]">
                     <img
                       src={recipe.imageUrl || "/placeholder.svg"}
                       alt={recipe.title}
-                      className="w-full h-full object-cover"
+                      className="w-full h-[240px] object-cover object-center"
                     />
                   </div>
                 )}

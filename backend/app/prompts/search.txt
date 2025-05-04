@@ -5,7 +5,7 @@ The recipe documents follow this schema:
 {schema_context}
 
 ### Instructions:
-- Output ONLY a valid JSON dictionary suitable for MongoDB filtering.
+- Output ONLY a dictionary  which contains key and value pairs suitable for MongoDB filtering.
 - Use MongoDB operators like $lte, $gte, $in, $regex as appropriate.
 - Ignore the tags attribute.
 - Use reasonable fixed thresholds for vague terms:
@@ -16,7 +16,7 @@ The recipe documents follow this schema:
     - "short prep time": prep_time_in_mins <= 10
     - "long cook time": cook_time_in_mins >= 60
 - If the query contains ingredient or cuisine names, match them using:
-    - {{"ingredients": {{"$in": ["ingredient_name"]}}}}
+    - {{"ingredients": {{"$regex": "ingredient_name", "$options": "i"}}}}
     - {{"cuisine": {{"$regex": "cuisine_name", "$options": "i"}}}}
 - Do not include any explanation, markdown, comments, or extra formatting.
 - Respond ONLY with the JSON object representing the filter.
@@ -25,7 +25,7 @@ The recipe documents follow this schema:
 
 ### Examples:
 User query: "Show me high protein chicken recipes"
-Output: {{"protein_grams": {{"$gte": 20}}, "ingredients": {{"$in": ["chicken"]}}}}
+Output: {{{{"protein_grams": {{"$gte": 20}}, "ingredients": {{"$regex": "chicken"}}}}}}
 
 User query: "Quick low fat Italian dishes"
-Output: {{"total_time_in_mins": {{"$lte": 15}}, "fat_grams": {{"$lte": 10}}, "cuisine": {{"$regex": "Italian", "$options": "i"}}}}
+Output: {{{{"total_time_in_mins": {{"$lte": 15}}, "fat_grams": {{"$lte": 10}}, "cuisine": {{"$regex": "Italian", "$options": "i"}}}}}}

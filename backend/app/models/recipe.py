@@ -26,6 +26,9 @@ class Recipe(BaseModel):
     source_url: Optional[str] = None
     estimated_calories: Optional[float] = None
     nutrients_present: Optional[List[str]] = []
+    image_url: Optional[str] = None
+    protein_grams: Optional[float] = None
+    fat_grams: Optional[float] = None
 
     class Config:
         populate_by_name = True

@@ -16,6 +16,7 @@ class RecipeCreate(BaseModel):
     protein_grams: Optional[float] = None
     fat_grams: Optional[float] = None
     nutrients_present: Optional[List[str]] = []
+    image_url: Optional[str] = None
 
 class Prompt(BaseModel):
     prompt: str

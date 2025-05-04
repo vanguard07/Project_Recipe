@@ -241,8 +241,19 @@ async def search_recipes(request: Request):
         # Execute the response aggregation query in the recipe collection
         if isinstance(response, dict) and len(response) == 0:
             return {"result": "Cannot help with this, let's try something else.", chat_id: chat_id}
-        print(f"Executing MongoDB query: {response}") # Log the query
+
+        print(f"Response for MongoDB query: {response}")
         recipes = await recipe_collection.find(response).to_list(100) # Limit results
+        if not recipes:
+            # Convert the response to a $or query by pushing all conditions into an array
+            or_query = {"$or": []}
+            for key, value in response.items():
+                if isinstance(value, list):
+                    or_query["$or"].append({key: {"$in": value}})
+                else:
+                    or_query["$or"].append({key: value})
+            print(f"OR query: {or_query}")
+            recipes = await recipe_collection.find(or_query).to_list(100) # Limit results
         if not recipes:
             return {"result": "Cannot help with this, let's try something else."}
 
@@ -332,9 +343,10 @@ async def store_recipe_from_url(request: Request):
                             "estimated_calories": {"type": ["number", "null"]},
                             "protein_grams": {"type": ["number", "null"]}, 
                             "fat_grams": {"type": ["number", "null"]}, 
-                            "nutrients_present": {"type": "array", "items": {"type": "string"}}
+                            "nutrients_present": {"type": "array", "items": {"type": "string"}},
+                            "image_url": {"type": ["string", "null"]}
                         },
-                        "required": ["title", "ingredients", "instructions", "cuisine", "meal_type", "prep_time_in_mins", "cook_time_in_mins", "total_time_in_mins", "tags", "estimated_calories", "protein_grams", "fat_grams", "nutrients_present"],
+                        "required": ["title", "ingredients", "instructions", "cuisine", "meal_type", "prep_time_in_mins", "cook_time_in_mins", "total_time_in_mins", "tags", "estimated_calories", "protein_grams", "fat_grams", "nutrients_present", "image_url"],
                         "additionalProperties": False
                     },
                     "strict": True
@@ -371,7 +383,8 @@ async def store_recipe_from_url(request: Request):
             estimated_calories=recipe_data.get("estimated_calories"),
             protein_grams=recipe_data.get("protein_grams"), # Added protein
             fat_grams=recipe_data.get("fat_grams"), # Added fat
-            nutrients_present=[nutrient.lower() for nutrient in recipe_data.get("nutrients_present", [])]
+            nutrients_present=[nutrient.lower() for nutrient in recipe_data.get("nutrients_present", [])],
+            image_url=recipe_data.get("image_url") # Added image URL
         )
 
         # Use the helper function to store and vectorize
