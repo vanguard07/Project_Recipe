@@ -142,6 +142,6 @@ The system leverages OpenAI's GPT models, LangChain, MongoDB, and ChromaDB for i
 
 ---
 
-## Team Members & NLP Tasks:
+## Team Members:
 - Avtans Kumar - AXK220317
 - Anusha Gupta - AXG230026
