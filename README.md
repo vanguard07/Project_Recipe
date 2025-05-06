@@ -24,32 +24,36 @@ The system leverages OpenAI's GPT models, LangChain, MongoDB, and ChromaDB for i
 
 ## Architecture & Workflow
 
-**Frontend:**
+### Frontend:
 - Built with Next.js and React.
 - Provides UI for recipe management, chat, and search.
 - Communicates with backend via REST API.
 
-**Backend:**
+### Backend:
 - FastAPI server exposes endpoints for recipe extraction, search, chat, and customization.
 - Integrates with OpenAI (GPT-4, GPT-4o, o3-mini) for NLP tasks.
 - Uses LangChain for retrieval-augmented generation (RAG) and context-aware chat.
 - Stores recipes and chat history in MongoDB.
 - Uses ChromaDB as a vector store for semantic search and retrieval.
 
-### GPT-based Flow
+#### GPT-based Flow
 - /classify: Classifies prompt into search/customization
 - /search: Filters and queries recipe_collection based on user input
 - /customize: Tailors an existing recipe using past chat history
 - MongoDB used to store:
     - Recipes
     - Chat history per user
+![Recipe Chatbot Process Guide](https://github.com/user-attachments/assets/6d5df1b8-11eb-4476-b816-2b99f45f9f78)
 
-### RAG-based Flow (LangChain)
+
+#### RAG-based Flow (LangChain)
 - Vector store: ChromaDB
 - Embeddings: OpenAIEmbeddings
 - Retriever: Finds similar recipes based on semantic match
 - LLM: GPT-4.1 via OpenAI API
 - Chain: ConversationalRetrievalChain for contextual, document-grounded answers
+![ChatGPT Image May 5, 2025 at 02_36_58 AM](https://github.com/user-attachments/assets/c9f6d294-6ac8-4910-a998-4bdc3a1ce485)
+
 ---
 
 ## Technologies Used
@@ -62,7 +66,7 @@ The system leverages OpenAI's GPT models, LangChain, MongoDB, and ChromaDB for i
 
 ---
 
-## Setup & Installation (Docker Only)
+## Setup & Installation
 
 ### Prerequisites
 - Docker and Docker Compose
