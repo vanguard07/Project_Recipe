@@ -2,6 +2,8 @@
 
 RecipeGPT is a conversational recipe assistant powered by GPT and LangChain. It allows users to search, customize, and generate cooking recipes in natural language using either GPT-based workflows or a Retrieval-Augmented Generation (RAG) approach. It supports ingredient-based filtering, nutritional queries, and live customization of recipes.
 
+Demo video - https://youtu.be/U6_SnZBQbIA
+
 ---
 
 ## Overview
