@@ -142,18 +142,9 @@ export default function RecipesPage() {
           {recipes.map((recipe) => (
             <div key={recipe.id} className="border rounded-lg overflow-hidden bg-background">
               <div className="flex flex-col md:flex-row">
-                {recipe.imageUrl && (
-                  <div className="w-full md:w-1/4 lg:w-1/5 max-h-[240px]">
-                    <img
-                      src={recipe.imageUrl || "/placeholder.svg"}
-                      alt={recipe.title}
-                      className="w-full h-[240px] object-cover object-center"
-                    />
-                  </div>
-                )}
                 <div className="flex-1 p-6">
                   <div className="mb-4">
-                    <h2 className="text-2xl font-bold mb-2">{recipe.title}</h2>
+                    <h2 className="text-2xl font-bold mb-2">{recipe.title.toUpperCase()}</h2>
                     <div className="flex items-center text-sm text-muted-foreground mb-2">
                       <LinkIcon className="h-3 w-3 mr-1" />
                       <a
